@@ -1,0 +1,63 @@
+name: Build Psych Engine (Linux ARM64)
+
+on:
+  workflow_dispatch:
+    inputs:
+      disable_video:
+        description: "Desactivar videos (hxvlc suele fallar en ARM64)"
+        type: boolean
+        default: true
+      disable_lua:
+        description: "Desactivar scripts Lua (usa esto si falla luajit)"
+        type: boolean
+        default: false
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04-arm
+    container: debian:trixie
+    steps:
+      - name: Instalar dependencias del sistema
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends \
+            git ca-certificates curl unzip make cmake g++ \
+            haxe neko \
+            libgl1-mesa-dev libglu1-mesa-dev libgles2-mesa-dev libegl1-mesa-dev \
+            libasound2-dev libpulse-dev libx11-dev libxext-dev libxi-dev \
+            libxrandr-dev libxinerama-dev libxcursor-dev \
+            libvlc-dev libvlccore-dev
+          haxe --version
+
+      - uses: actions/checkout@v4
+
+      - name: Ajustes para consola portátil
+        run: |
+          if [ "${{ inputs.disable_video }}" = "true" ]; then
+            sed -i '/VIDEOS_ALLOWED/d' Project.xml
+          fi
+          if [ "${{ inputs.disable_lua }}" = "true" ]; then
+            sed -i '/LUA_ALLOWED/d' Project.xml
+          fi
+
+      - name: Configurar haxelib e instalar librerías
+        run: |
+          mkdir -p ~/haxelib
+          haxelib setup ~/haxelib
+          cd setup
+          chmod +x unix.sh
+          ./unix.sh
+
+      - name: Compilar
+        run: |
+          haxelib run lime build linux -release -DHXCPP_ARM64
+
+      - name: Comprobar arquitectura del binario
+        run: |
+          ls export/release/linux/bin
+          file export/release/linux/bin/PsychEngine || true
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: psych-engine-linux-arm64
+          path: export/release/linux/bin
